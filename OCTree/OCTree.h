@@ -117,10 +117,11 @@ struct OCTreeNode
 
 	Node* Add(NodeData* data, const Vector3& pos)
 	{
-		if (this->data == nullptr)
+		if (this->isLeaf)
 		{
-			this->data = data;
-			return this;
+			this->isLeaf = false;
+			this->Add(this->data, this->data->dataPos);
+			this->data = nullptr;
 		}
 
 		int index = pos.x <= center.x ? 0 : 1;
@@ -138,6 +139,7 @@ struct OCTreeNode
 					pos.z <= center.z ? (center.z - childOffset) : (center.z + childOffset)
 				), 
 				childExtent);
+			node->data = data;
 			children[index] = node;
 			return node;
 		}
@@ -145,9 +147,60 @@ struct OCTreeNode
 		return children[index]->Add(data, pos);
 	}
 
+	void Remove(Node* node)
+	{
+
+		int index = node->center.x <= center.x ? 0 : 1;
+		index += node->center.y <= center.y ? 0 : 2;
+		index += node->center.z <= center.z ? 0 : 4;
+
+		children[index] = nullptr;
+		delete node;
+		shrink();
+	}
+
+	void shrink()
+	{
+		if (parent == nullptr)
+		{
+			return;
+		}
+
+		int index = -1;
+		for (int i = 0; i < 8; ++i)
+		{
+			Node* node = children[i];
+			if (node != nullptr)
+			{
+				if (!node->isLeaf)
+				{
+					return;
+				}
+				if (index != -1)
+				{
+					return;
+				}
+				index = i;
+			}
+		}
+
+		if (index != -1)
+		{
+			Node* node = children[index];
+			children[index] = nullptr;
+
+			data = node->data;
+			isLeaf = true;
+			delete node;
+		}
+
+		parent->shrink();
+	}
+
 	Node* children[8];
 	Node* parent = nullptr;
 
+	bool isLeaf = true;
 	NodeData* data = nullptr;
 
 	Vector3 center;
@@ -162,13 +215,20 @@ class OCTree
 
 public:
 
-	OCTree(const Vector3& center, float extent) : root(new OCTreeNode<T>(nullptr, center, extent)){}
+	OCTree(const Vector3& center, float extent) : root(new OCTreeNode<T>(nullptr, center, extent)){
+		root->isLeaf = false;
+	}
 
 	Node* Add(T data, const Vector3&& pos)
 	{
 		NodeData* nodeData = new NodeData(data, pos);
 		Node* p = root->Find(pos);
 		return p->Add(nodeData, pos);
+	}
+
+	void Remove(Node* node)
+	{
+		node->parent->Remove(node);
 	}
 
 	Node* Find(const Vector3&& pos)
